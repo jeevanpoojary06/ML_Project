@@ -6,6 +6,7 @@ import pandas as pd
 import dill 
 from src.exception import CustomException
 from sklearn.metrics import r2_score
+from sklearn.model_selection import GridSearchCV
 
 def save_object(file_path,obj):
     try:
@@ -19,25 +20,39 @@ def save_object(file_path,obj):
     except Exception as e:
         raise CustomException(e,sys)
     
-def evaluate_models(X_train,y_train,X_test,y_test,models):
+from catboost import CatBoostRegressor
+
+def evaluate_models(X_train, y_train, X_test, y_test, models, param):
     try:
-        report={}
+        report = {}
 
-        for i in range(len(list(models))):
-            model=list(models.values())[i]
+        for model_name, model in models.items():
+            if isinstance(model, CatBoostRegressor):
+                model.fit(X_train, y_train)
+            else:
+                gs = GridSearchCV(
+                    model,
+                    param[model_name],
+                    cv=3,
+                    n_jobs=-1
+                )
+                gs.fit(X_train, y_train)
+                model.set_params(**gs.best_params_)
+                model.fit(X_train, y_train)
 
-            model.fit(X_train,y_train) #Train Models
-
-            y_train_pred=model.predict(X_train)
-
-            y_test_pred=model.predict(X_test)
-
-            train_model_score = r2_score(y_train,y_train_pred)
-            test_model_score = r2_score(y_test,y_test_pred)
-
-            report[list(models.keys())[i]]=test_model_score
+            y_test_pred = model.predict(X_test)
+            report[model_name] = r2_score(y_test, y_test_pred)
 
         return report
 
     except Exception as e:
+        raise CustomException(e, sys)
+    
+def load_object(file_path):
+    try:
+        with open(file_path,"rb") as file_obj:
+            return dill.load(file_obj)
+    except Exception as e:
         raise CustomException(e,sys)
+
+
